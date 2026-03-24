@@ -14,7 +14,7 @@ import io.vertx.ext.web.RoutingContext;
 
 abstract class ReactiveHandlerBeanBase<ConfigType extends StreamConfigBase, MessageType> {
 
-    protected final Map<String, Bundle<MessageType>> processors = new HashMap<>();
+    protected final Map<String, Bundle<ConfigType, MessageType>> processors = new HashMap<>();
 
     @PostConstruct
     void init() {
@@ -22,36 +22,35 @@ abstract class ReactiveHandlerBeanBase<ConfigType extends StreamConfigBase, Mess
     }
 
     void handle(RoutingContext event) {
-        Bundle<MessageType> bundle = processors.get(key(event));
+        Bundle<ConfigType, MessageType> bundle = processors.get(key(event));
         if (bundle != null) {
             MultiEmitter<? super MessageType> emitter = bundle.emitter;
             StrictQueueSizeGuard guard = bundle.guard;
-            handleRequest(event, emitter, guard, bundle.path, bundle.deserializerName);
+            handleRequest(event, emitter, guard, bundle.getConfig());
         } else {
             event.response().setStatusCode(404).end();
         }
     }
 
     private void addProcessor(ConfigType streamConfig) {
-        StrictQueueSizeGuard guard = new StrictQueueSizeGuard(streamConfig.bufferSize);
-        Bundle<MessageType> bundle = new Bundle<>(guard);
+        StrictQueueSizeGuard guard = new StrictQueueSizeGuard(streamConfig.bufferSize());
+        Bundle<ConfigType, MessageType> bundle = new Bundle<>(guard);
 
         Multi<MessageType> processor = Multi.createFrom()
                 // emitter with an unbounded queue, we control the size ourselves, with the guard
                 .<MessageType> emitter(bundle::setEmitter, BackPressureStrategy.BUFFER)
                 .onItem().invoke(guard::dequeue);
         bundle.setProcessor(processor);
-        bundle.setPath(streamConfig.path);
-        bundle.setDeserializerName(streamConfig.deserializerName);
+        bundle.setConfig(streamConfig);
 
-        Bundle<MessageType> previousProcessor = processors.put(key(streamConfig), bundle);
+        Bundle<ConfigType, MessageType> previousProcessor = processors.put(key(streamConfig), bundle);
         if (previousProcessor != null) {
             throw new IllegalStateException("Duplicate incoming streams defined for " + description(streamConfig));
         }
     }
 
     protected abstract void handleRequest(RoutingContext event, MultiEmitter<? super MessageType> emitter,
-            StrictQueueSizeGuard guard, String path, String deseralizerName);
+            StrictQueueSizeGuard guard, ConfigType config);
 
     protected abstract String description(ConfigType streamConfig);
 
@@ -61,12 +60,11 @@ abstract class ReactiveHandlerBeanBase<ConfigType extends StreamConfigBase, Mess
 
     protected abstract Collection<ConfigType> configs();
 
-    protected class Bundle<MessageType> {
+    protected class Bundle<ConfigType, MessageType> {
         private final StrictQueueSizeGuard guard;
         private Multi<MessageType> processor; // effectively final
         private MultiEmitter<? super MessageType> emitter; // effectively final
-        private String path;
-        private String deserializerName;
+        private ConfigType config;
 
         private Bundle(StrictQueueSizeGuard guard) {
             this.guard = guard;
@@ -84,16 +82,12 @@ abstract class ReactiveHandlerBeanBase<ConfigType extends StreamConfigBase, Mess
             return processor;
         }
 
-        public void setPath(String path) {
-            this.path = path;
+        public ConfigType getConfig() {
+            return config;
         }
 
-        public String getDeserializerName() {
-            return deserializerName;
-        }
-
-        public void setDeserializerName(String deserializerName) {
-            this.deserializerName = deserializerName;
+        public void setConfig(ConfigType config) {
+            this.config = config;
         }
     }
 }

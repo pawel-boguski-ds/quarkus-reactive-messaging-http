@@ -40,7 +40,7 @@ public class ReactiveHttpHandlerBean extends ReactiveHandlerBeanBase<HttpStreamC
 
     @Override
     protected String key(HttpStreamConfig streamConfig) {
-        return key(streamConfig.path, streamConfig.method);
+        return key(streamConfig.path(), streamConfig.method());
     }
 
     @Override
@@ -50,19 +50,20 @@ public class ReactiveHttpHandlerBean extends ReactiveHandlerBeanBase<HttpStreamC
 
     @Override
     protected String description(HttpStreamConfig streamConfig) {
-        return String.format("path: %s, method %s", streamConfig.path, streamConfig.method);
+        return String.format("path: %s, method %s", streamConfig.path(), streamConfig.method());
     }
 
     @Override
     protected void handleRequest(RoutingContext event, MultiEmitter<? super HttpMessage<?>> emitter,
-            StrictQueueSizeGuard guard, String path, String deserializerName) {
+            StrictQueueSizeGuard guard, HttpStreamConfig streamConfig) {
         if (emitter == null) {
             onUnexpectedError(event, null,
-                    "No consumer subscribed for messages sent to Reactive Messaging HTTP endpoint on path: " + path);
+                    "No consumer subscribed for messages sent to Reactive Messaging HTTP endpoint on path: "
+                            + streamConfig.path());
         } else if (guard.prepareToEmit()) {
             try {
                 emitter.emit(new HttpMessage<>(
-                        deserializerFactory.getDeserializer(deserializerName)
+                        deserializerFactory.getDeserializer(streamConfig.deserializerName())
                                 .map(d -> d.deserialize(event.body().buffer()))
                                 .orElse(event.body().buffer()),
                         new IncomingHttpMetadata(event),

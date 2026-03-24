@@ -1,11 +1,16 @@
 package io.quarkus.reactivemessaging.http.runtime.config;
 
 public class WebSocketStreamConfig extends StreamConfigBase {
-    public WebSocketStreamConfig(String path, int bufferSize, String deserializerName) {
+
+    private final String messageIdProvider;
+
+    public WebSocketStreamConfig(String path, int bufferSize, String deserializerName,
+            String messageIdProvider) {
         super(bufferSize, path, deserializerName);
+        this.messageIdProvider = messageIdProvider;
     }
 
-    public String path() {
-        return path;
+    public String messageIdProvider() {
+        return messageIdProvider;
     }
 }

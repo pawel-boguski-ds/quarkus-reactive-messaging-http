@@ -5,15 +5,15 @@ import java.util.Locale;
 import io.vertx.core.http.HttpMethod;
 
 public class HttpStreamConfig extends StreamConfigBase {
-    public final HttpMethod method;
+    private final HttpMethod method;
 
     public HttpStreamConfig(String path, String method, String name, int bufferSize, String deserializerName) {
         super(bufferSize, path, deserializerName);
         this.method = toHttpMethod(method, name);
     }
 
-    public String path() {
-        return path;
+    public HttpMethod method() {
+        return method;
     }
 
     private HttpMethod toHttpMethod(String method, String connectorName) {

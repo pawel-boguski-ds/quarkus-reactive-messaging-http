@@ -96,7 +96,8 @@ public class ReactiveHttpConfig {
                 int bufferSize = getConfigProperty(IN_KEY, connectorName, "buffer-size",
                         QuarkusWebSocketConnector.DEFAULT_SOURCE_BUFFER, Integer.class);
                 String deserializerName = getConfigProperty(IN_KEY, connectorName, "deserializer", null, String.class);
-                streamConfigs.add(new WebSocketStreamConfig(path, bufferSize, deserializerName));
+                String messageIdProvider = getConfigProperty(IN_KEY, connectorName, "message-id-provider", null, String.class);
+                streamConfigs.add(new WebSocketStreamConfig(path, bufferSize, deserializerName, messageIdProvider));
             }
         }
         return streamConfigs;

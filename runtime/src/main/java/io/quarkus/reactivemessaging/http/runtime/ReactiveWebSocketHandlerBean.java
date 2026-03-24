@@ -32,7 +32,7 @@ public class ReactiveWebSocketHandlerBean extends ReactiveHandlerBeanBase<WebSoc
 
     @Override
     protected void handleRequest(RoutingContext event, MultiEmitter<? super WebSocketMessage<?>> emitter,
-            StrictQueueSizeGuard guard, String path, String deserializerName) {
+            StrictQueueSizeGuard guard, WebSocketStreamConfig streamConfig) {
         event.request().toWebSocket(
                 webSocket -> {
                     if (webSocket.failed()) {
@@ -44,10 +44,12 @@ public class ReactiveWebSocketHandlerBean extends ReactiveHandlerBeanBase<WebSoc
                                     if (emitter == null) {
                                         onUnexpectedError(serverWebSocket, null,
                                                 "No consumer subscribed for messages sent to " +
-                                                        "Reactive Messaging WebSocket endpoint on path: " + path);
+                                                        "Reactive Messaging WebSocket endpoint on path: "
+                                                        + streamConfig.path());
                                     } else if (guard.prepareToEmit()) {
                                         try {
-                                            Object payload = deserializerFactory.getDeserializer(deserializerName)
+                                            Object payload = deserializerFactory
+                                                    .getDeserializer(streamConfig.deserializerName())
                                                     .map(d -> d.deserialize(b)).orElse(b);
                                             RequestMetadata requestMetadata = new RequestMetadata(event);
                                             String messageId = getMessageId(payload, requestMetadata);
@@ -70,12 +72,12 @@ public class ReactiveWebSocketHandlerBean extends ReactiveHandlerBeanBase<WebSoc
 
     @Override
     protected String description(WebSocketStreamConfig config) {
-        return String.format("path %s", config.path);
+        return String.format("path %s", config.path());
     }
 
     @Override
     protected String key(WebSocketStreamConfig config) {
-        return config.path;
+        return config.path();
     }
 
     @Override
@@ -120,7 +122,7 @@ public class ReactiveWebSocketHandlerBean extends ReactiveHandlerBeanBase<WebSoc
     }
 
     Multi<WebSocketMessage<?>> getProcessor(String path) {
-        Bundle<WebSocketMessage<?>> bundle = processors.get(path);
+        Bundle<WebSocketStreamConfig, WebSocketMessage<?>> bundle = processors.get(path);
         if (bundle == null) {
             throw new IllegalStateException("No incoming stream defined for path " + path);
         }
