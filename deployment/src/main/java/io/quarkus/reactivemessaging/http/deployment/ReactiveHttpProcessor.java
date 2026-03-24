@@ -41,6 +41,8 @@ import io.quarkus.gizmo.ClassOutput;
 import io.quarkus.gizmo.MethodCreator;
 import io.quarkus.gizmo.MethodDescriptor;
 import io.quarkus.gizmo.ResultHandle;
+import io.quarkus.reactivemessaging.http.runtime.MessageIdProvider;
+import io.quarkus.reactivemessaging.http.runtime.MessageIdProviderFactoryBase;
 import io.quarkus.reactivemessaging.http.runtime.QuarkusHttpConnector;
 import io.quarkus.reactivemessaging.http.runtime.QuarkusWebSocketConnector;
 import io.quarkus.reactivemessaging.http.runtime.ReactiveHttpHandlerBean;
@@ -143,6 +145,8 @@ public class ReactiveHttpProcessor {
         initSerializers(ReactiveHttpConfig.readDeserializers(),
                 "io.quarkus.reactivemessaging.http.runtime.serializers.DeserializerFactory", Deserializer.class,
                 DeserializerFactoryBase.class, generatedBeanProducer);
+
+        initMessageIdProviders(ReactiveHttpConfig.readMessageIdProviders(), generatedBeanProducer);
     }
 
     @BuildStep
@@ -210,7 +214,7 @@ public class ReactiveHttpProcessor {
         }
     }
 
-    private void initSerializers(List<String> serializers, String className, Class<?> type, Class<?> baseClass,
+    private void initSerializers(Set<String> serializers, String className, Class<?> type, Class<?> baseClass,
             BuildProducer<GeneratedBeanBuildItem> generatedBeans) {
         ClassOutput classOutput = new GeneratedBeanGizmoAdaptor(generatedBeans);
         try (ClassCreator factory = ClassCreator.builder().classOutput(classOutput)
@@ -227,6 +231,31 @@ public class ReactiveHttpProcessor {
                 for (String serializerName : serializers) {
                     ResultHandle serializer = init.newInstance(MethodDescriptor.ofConstructor(serializerName));
                     init.invokeVirtualMethod(addSerializer, init.getThis(), init.load(serializerName), serializer);
+                }
+                init.returnValue(null);
+            }
+        }
+    }
+
+    private void initMessageIdProviders(Set<String> messageIdProviders,
+            BuildProducer<GeneratedBeanBuildItem> generatedBeans) {
+        Class<?> baseClass = MessageIdProviderFactoryBase.class;
+        ClassOutput classOutput = new GeneratedBeanGizmoAdaptor(generatedBeans);
+        try (ClassCreator factory = ClassCreator.builder().classOutput(classOutput)
+                .className("io.quarkus.reactivemessaging.http.runtime.MessageIdProviderFactory")
+                .superClass(baseClass)
+                .build()) {
+            factory.addAnnotation(ApplicationScoped.class);
+
+            try (MethodCreator init = factory.getMethodCreator("initAdditionalMessageIdProviders", void.class)) {
+                init.setModifiers(Modifier.PROTECTED);
+                MethodDescriptor addSerializer = MethodDescriptor.ofMethod(baseClass, "addMessageIdProvider",
+                        void.class, String.class, MessageIdProvider.class);
+
+                for (String messageIdProviderName : messageIdProviders) {
+                    ResultHandle messageIdProvider = init.newInstance(MethodDescriptor.ofConstructor(messageIdProviderName));
+                    init.invokeVirtualMethod(addSerializer, init.getThis(), init.load(messageIdProviderName),
+                            messageIdProvider);
                 }
                 init.returnValue(null);
             }

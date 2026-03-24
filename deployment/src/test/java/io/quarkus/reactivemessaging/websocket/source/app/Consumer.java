@@ -55,7 +55,11 @@ public class Consumer {
 
         lock.triggerWhenUnlocked(() -> {
             messages.add(message.getPayload());
-            message.ack();
+            if (message.getPayload().endsWith("for NACK test")) {
+                message.nack(new RuntimeException("NACK test"));
+            } else {
+                message.ack();
+            }
             result.complete(null);
         }, 10000);
         return result;

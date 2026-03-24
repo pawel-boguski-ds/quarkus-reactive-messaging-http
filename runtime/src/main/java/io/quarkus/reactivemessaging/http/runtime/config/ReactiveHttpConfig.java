@@ -3,7 +3,9 @@ package io.quarkus.reactivemessaging.http.runtime.config;
 import static java.util.regex.Pattern.quote;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -103,21 +105,28 @@ public class ReactiveHttpConfig {
         return streamConfigs;
     }
 
+    public static Set<String> readMessageIdProviders() {
+        Set<String> messageIdProviders = new HashSet<>();
+        messageIdProviders.addAll(readProperties(IN_PATTERN, IN_KEY, MP_MSG_IN, "message-id-provider"));
+        messageIdProviders.addAll(readProperties(OUT_PATTERN, OUT_KEY, MP_MSG_OUT, "message-id-provider"));
+        return messageIdProviders;
+    }
+
     /**
      * Read custom serializer class names from the configuration
      *
-     * @return list of custom serializer class names
+     * @return set of custom serializer class names
      */
-    public static List<String> readSerializers() {
-        return readSerializers(OUT_PATTERN, OUT_KEY, MP_MSG_OUT, "serializer");
+    public static Set<String> readSerializers() {
+        return readProperties(OUT_PATTERN, OUT_KEY, MP_MSG_OUT, "serializer");
     }
 
-    public static List<String> readDeserializers() {
-        return readSerializers(IN_PATTERN, IN_KEY, MP_MSG_IN, "deserializer");
+    public static Set<String> readDeserializers() {
+        return readProperties(IN_PATTERN, IN_KEY, MP_MSG_IN, "deserializer");
     }
 
-    private static List<String> readSerializers(Pattern pattern, String key, String message, String serializerKey) {
-        List<String> result = new ArrayList<>();
+    private static Set<String> readProperties(Pattern pattern, String key, String message, String propertyKey) {
+        Set<String> result = new HashSet<>();
         Config config = ConfigProviderResolver.instance().getConfig();
         for (String propertyName : config.getPropertyNames()) {
             String connectorName = getConnectorNameIfMatching(pattern, propertyName, key, message,
@@ -127,7 +136,7 @@ public class ReactiveHttpConfig {
                         QuarkusHttpConnector.NAME);
             }
             if (connectorName != null) {
-                String serializer = getConfigProperty(key, connectorName, serializerKey, null, String.class);
+                String serializer = getConfigProperty(key, connectorName, propertyKey, null, String.class);
                 if (serializer != null) {
                     result.add(serializer);
                 }

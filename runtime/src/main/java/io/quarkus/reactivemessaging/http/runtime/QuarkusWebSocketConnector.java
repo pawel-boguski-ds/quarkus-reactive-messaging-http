@@ -4,6 +4,7 @@ import static io.quarkus.reactivemessaging.http.runtime.QuarkusWebSocketConnecto
 import static io.quarkus.reactivemessaging.http.runtime.QuarkusWebSocketConnector.DEFAULT_MAX_INFLIGHT_MESSAGES;
 import static io.quarkus.reactivemessaging.http.runtime.QuarkusWebSocketConnector.DEFAULT_WAIT_FOR_COMPLETION;
 import static io.smallrye.reactive.messaging.annotations.ConnectorAttribute.Direction.INCOMING;
+import static io.smallrye.reactive.messaging.annotations.ConnectorAttribute.Direction.INCOMING_AND_OUTGOING;
 import static io.smallrye.reactive.messaging.annotations.ConnectorAttribute.Direction.OUTGOING;
 
 import java.net.URI;
@@ -51,6 +52,8 @@ import io.vertx.core.Vertx;
 
 @ConnectorAttribute(name = "path", type = "string", direction = INCOMING, description = "The path of the endpoint", mandatory = true)
 @ConnectorAttribute(name = "buffer-size", type = "string", direction = INCOMING, description = "Web socket endpoint buffers messages if a consumer is not able to keep up. This setting specifies the size of the buffer.", defaultValue = QuarkusHttpConnector.DEFAULT_SOURCE_BUFFER_STR)
+
+@ConnectorAttribute(name = "message-id-provider", type = "string", direction = INCOMING_AND_OUTGOING, description = "Message ID provider. When configured, enables ACK/NACK for messages with an ID.")
 @ApplicationScoped
 public class QuarkusWebSocketConnector implements InboundConnector, OutboundConnector {
     public static final String NAME = "quarkus-websocket";
@@ -71,6 +74,9 @@ public class QuarkusWebSocketConnector implements InboundConnector, OutboundConn
 
     @Inject
     SerializerFactoryBase serializerFactory;
+
+    @Inject
+    MessageIdProviderFactoryBase messageIdProviderFactory;
 
     @Inject
     Vertx vertx;
@@ -98,12 +104,16 @@ public class QuarkusWebSocketConnector implements InboundConnector, OutboundConn
         URI url = URI.create(config.getUrl());
         long inflights = config.getMaxInflightMessages();
         boolean waitForCompletion = config.getWaitForCompletion();
+        MessageIdProvider messageIdProvider = messageIdProviderFactory
+                .getMessageIdProvider(config.getMessageIdProvider().orElse(null))
+                .orElse(null);
 
         Optional<TlsConfiguration> tlsConfiguration = TlsConfig.lookupConfig(config.getTlsConfigurationName(),
                 tlsRegistry.isResolvable() ? Optional.of(tlsRegistry.get()) : Optional.empty());
 
         WebSocketSink webSocketSink = new WebSocketSink(vertx, url, serializer, serializerFactory,
-                maxRetries, delay, jitter, tlsConfiguration, inflights, waitForCompletion);
+                maxRetries, delay, jitter, tlsConfiguration, inflights, waitForCompletion,
+                messageIdProvider);
         sinks.add(webSocketSink);
         return webSocketSink.sink();
     }

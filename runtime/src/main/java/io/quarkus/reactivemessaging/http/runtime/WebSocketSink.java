@@ -45,16 +45,19 @@ class WebSocketSink extends AbstractSink {
     private final SerializerFactoryBase serializerFactory;
     private final AtomicReference<WebSocket> websocket = new AtomicReference<>();
     private final Map<String, CompletableFuture<Void>> ackById = new ConcurrentHashMap<>();
+    private final MessageIdProvider messageIdProvider;
 
     //    private final MessageId
 
     WebSocketSink(Vertx vertx, URI uri, String serializer, SerializerFactoryBase serializerFactory,
             int maxRetries, Optional<Duration> delay, double jitter,
-            Optional<TlsConfiguration> tlsConfiguration, long inflights, boolean waitForCompletion) {
+            Optional<TlsConfiguration> tlsConfiguration, long inflights, boolean waitForCompletion,
+            MessageIdProvider messageIdProvider) {
         super(log, uri.toString(), maxRetries, jitter, delay, inflights, waitForCompletion);
         this.uri = uri;
         this.serializerFactory = serializerFactory;
         this.serializer = serializer;
+        this.messageIdProvider = messageIdProvider;
 
         String scheme = uri.getScheme().toLowerCase(Locale.getDefault());
         if (!supportedSchemes.contains(scheme)) {
@@ -105,7 +108,6 @@ class WebSocketSink extends AbstractSink {
         WebSocketConnectOptions options = options();
         Serializer<Object> serializer = serializerFactory.getSerializer(this.serializer, message.getPayload());
         Buffer serialized = serializer.serialize(message.getPayload());
-        // TODO message metadata?
         String messageId = getMessageId(message);
 
         // TODO clear old entries from map? some leftovers may be cased by the other end errors or no response
@@ -153,10 +155,8 @@ class WebSocketSink extends AbstractSink {
     }
 
     private String getMessageId(Message<?> message) {
-        if (message.getPayload() instanceof String
-                && (((String) message.getPayload()).contains("for ACK test")
-                        || ((String) message.getPayload()).contains("for NACK test"))) {
-            return (String) message.getPayload();
+        if (messageIdProvider != null) {
+            return messageIdProvider.getMessageId(message);
         }
         return null;
     }

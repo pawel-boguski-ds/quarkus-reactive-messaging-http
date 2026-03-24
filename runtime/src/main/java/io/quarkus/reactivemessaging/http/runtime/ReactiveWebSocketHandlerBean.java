@@ -5,6 +5,8 @@ import java.util.Collection;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 
+import org.eclipse.microprofile.reactive.messaging.Message;
+import org.eclipse.microprofile.reactive.messaging.Metadata;
 import org.jboss.logging.Logger;
 
 import io.quarkus.reactivemessaging.http.runtime.config.ReactiveHttpConfig;
@@ -30,6 +32,9 @@ public class ReactiveWebSocketHandlerBean extends ReactiveHandlerBeanBase<WebSoc
     @Inject
     DeserializerFactoryBase deserializerFactory;
 
+    @Inject
+    MessageIdProviderFactoryBase messageIdProviderFactory;
+
     @Override
     protected void handleRequest(RoutingContext event, MultiEmitter<? super WebSocketMessage<?>> emitter,
             StrictQueueSizeGuard guard, WebSocketStreamConfig streamConfig) {
@@ -52,7 +57,8 @@ public class ReactiveWebSocketHandlerBean extends ReactiveHandlerBeanBase<WebSoc
                                                     .getDeserializer(streamConfig.deserializerName())
                                                     .map(d -> d.deserialize(b)).orElse(b);
                                             RequestMetadata requestMetadata = new RequestMetadata(event);
-                                            String messageId = getMessageId(payload, requestMetadata);
+                                            String messageId = getMessageId(streamConfig.messageIdProvider(), payload,
+                                                    requestMetadata);
                                             // TODO return result of serverWebSocket.write in WebSocketMessage ack and nack?
                                             emitter.emit(new WebSocketMessage<>(
                                                     payload, requestMetadata,
@@ -109,11 +115,10 @@ public class ReactiveWebSocketHandlerBean extends ReactiveHandlerBeanBase<WebSoc
         serverWebSocket.close((short) 3500, "Unexpected error while processing the message");
     }
 
-    private String getMessageId(Object payload, RequestMetadata requestMetadata) {
-        if ("test-message".equals(payload.toString())) {
-            return payload.toString();
-        }
-        return null;
+    private String getMessageId(String messageIdProvider, Object payload, RequestMetadata requestMetadata) {
+        return messageIdProviderFactory.getMessageIdProvider(messageIdProvider)
+                .map(provider -> provider.getMessageId(Message.of(payload, Metadata.of(requestMetadata))))
+                .orElse(null);
     }
 
     private void log(Throwable error, String message) {

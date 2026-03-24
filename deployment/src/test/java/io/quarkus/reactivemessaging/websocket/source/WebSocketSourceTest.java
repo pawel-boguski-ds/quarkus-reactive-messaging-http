@@ -24,6 +24,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 
 import io.quarkus.reactivemessaging.http.runtime.RequestMetadata;
 import io.quarkus.reactivemessaging.utils.VertxFriendlyLock;
+import io.quarkus.reactivemessaging.websocket.TestMessageIdProvider;
 import io.quarkus.reactivemessaging.websocket.WebSocketClient;
 import io.quarkus.reactivemessaging.websocket.WebSocketClient.WsConnection;
 import io.quarkus.reactivemessaging.websocket.source.app.Consumer;
@@ -40,7 +41,8 @@ class WebSocketSourceTest {
     @RegisterExtension
     static final QuarkusUnitTest config = new QuarkusUnitTest()
             .setArchiveProducer(() -> ShrinkWrap.create(JavaArchive.class)
-                    .addClasses(Consumer.class, WebSocketClient.class, VertxFriendlyLock.class))
+                    .addClasses(Consumer.class, WebSocketClient.class, VertxFriendlyLock.class,
+                            TestMessageIdProvider.class))
             .withConfigurationResource("websocket-source-test-application.properties");
 
     @TestHTTPResource("my-ws")
@@ -77,11 +79,20 @@ class WebSocketSourceTest {
 
     @Test
     void shouldAck() {
+        shouldAckOrNack("test-message", "ACK\ntest-message");
+    }
+
+    @Test
+    void shouldNack() {
+        shouldAckOrNack("test-message for NACK test", "NACK\ntest-message for NACK test");
+    }
+
+    void shouldAckOrNack(String testPayload, String expectedResponse) {
         consumer.pause();
         WsConnection wsConnection = client.connect(wsSourceForAckUri);
-        wsConnection.send("test-message");
+        wsConnection.send(testPayload);
 
-        await("wait for message to be received")
+        await("wait for message to be ack/nack")
                 .atMost(10, TimeUnit.SECONDS)
                 .until(() -> consumer.getMessagesReceived(), hasSize(1));
         assertThat(wsConnection.getResponses()).isEmpty();
@@ -95,9 +106,9 @@ class WebSocketSourceTest {
                     assertThat(consumer.getMessages()).hasSize(1);
                 });
         String payload = consumer.getMessages().get(0);
-        assertThat(payload).isEqualTo("test-message");
+        assertThat(payload).isEqualTo(testPayload);
         String response = wsConnection.getResponses().get(0);
-        assertThat(response).isEqualTo("ACK\ntest-message");
+        assertThat(response).isEqualTo(expectedResponse);
     }
 
     @Test
