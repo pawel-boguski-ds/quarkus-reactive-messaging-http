@@ -20,9 +20,10 @@ public class Consumer {
 
     private RequestMetadata requestMetadata = null;
     private final List<String> messages = new ArrayList<>();
+    private final List<String> messagesReceived = new ArrayList<>();
     private final List<Dto> dtos = new ArrayList<>();
 
-    VertxFriendlyLock lock;
+    private final VertxFriendlyLock lock;
 
     @Inject
     Consumer(Vertx vertx) {
@@ -37,6 +38,20 @@ public class Consumer {
     @Incoming("my-ws-source")
     public CompletionStage<Void> process(Message<String> message) {
         CompletableFuture<Void> result = new CompletableFuture<>();
+
+        lock.triggerWhenUnlocked(() -> {
+            messages.add(message.getPayload());
+            message.ack();
+            result.complete(null);
+        }, 10000);
+        return result;
+    }
+
+    @Incoming("my-ws-source-ack")
+    public CompletionStage<Void> processWithAck(Message<String> message) {
+        CompletableFuture<Void> result = new CompletableFuture<>();
+
+        messagesReceived.add(message.getPayload());
 
         lock.triggerWhenUnlocked(() -> {
             messages.add(message.getPayload());
@@ -75,6 +90,10 @@ public class Consumer {
         return messages;
     }
 
+    public List<String> getMessagesReceived() {
+        return messagesReceived;
+    }
+
     public RequestMetadata getRequestMetadata() {
         return requestMetadata;
     }
@@ -89,6 +108,7 @@ public class Consumer {
 
     public void clear() {
         messages.clear();
+        messagesReceived.clear();
         requestMetadata = null;
         lock.reset();
     }

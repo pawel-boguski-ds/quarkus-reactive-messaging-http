@@ -25,6 +25,7 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import io.quarkus.reactivemessaging.http.runtime.RequestMetadata;
 import io.quarkus.reactivemessaging.utils.VertxFriendlyLock;
 import io.quarkus.reactivemessaging.websocket.WebSocketClient;
+import io.quarkus.reactivemessaging.websocket.WebSocketClient.WsConnection;
 import io.quarkus.reactivemessaging.websocket.source.app.Consumer;
 import io.quarkus.test.QuarkusUnitTest;
 import io.quarkus.test.common.http.TestHTTPResource;
@@ -44,6 +45,9 @@ class WebSocketSourceTest {
 
     @TestHTTPResource("my-ws")
     URI wsSourceUri;
+
+    @TestHTTPResource("my-ws-ack")
+    URI wsSourceForAckUri;
 
     @TestHTTPResource("my-ws-json")
     URI wsSourceForJsonUri;
@@ -69,6 +73,31 @@ class WebSocketSourceTest {
                 .until(() -> consumer.getMessages(), hasSize(1));
         String payload = consumer.getMessages().get(0);
         assertThat(payload).isEqualTo("test-message");
+    }
+
+    @Test
+    void shouldAck() {
+        consumer.pause();
+        WsConnection wsConnection = client.connect(wsSourceForAckUri);
+        wsConnection.send("test-message");
+
+        await("wait for message to be received")
+                .atMost(10, TimeUnit.SECONDS)
+                .until(() -> consumer.getMessagesReceived(), hasSize(1));
+        assertThat(wsConnection.getResponses()).isEmpty();
+        assertThat(consumer.getMessages()).isEmpty();
+
+        consumer.resume();
+        await("wait for message to be consumed")
+                .atMost(10, TimeUnit.SECONDS)
+                .untilAsserted(() -> {
+                    assertThat(wsConnection.getResponses()).hasSize(1);
+                    assertThat(consumer.getMessages()).hasSize(1);
+                });
+        String payload = consumer.getMessages().get(0);
+        assertThat(payload).isEqualTo("test-message");
+        String response = wsConnection.getResponses().get(0);
+        assertThat(response).isEqualTo("ACK\ntest-message");
     }
 
     @Test
@@ -158,7 +187,9 @@ class WebSocketSourceTest {
 
         await("all processing finished")
                 .atMost(10, TimeUnit.SECONDS)
-                .until(() -> connection.getResponses().size(), equalTo(messagesToSend));
+                .until(() -> connection.getResponses().stream()
+                        .filter(response -> "BUFFER_OVERFLOW".equals(response) || "ACK".equals(response)).count(),
+                        equalTo((long) messagesToSend));
 
         assertThat(consumer.getMessages()).hasSize(messagesToSend - expectedFailureCount);
     }
