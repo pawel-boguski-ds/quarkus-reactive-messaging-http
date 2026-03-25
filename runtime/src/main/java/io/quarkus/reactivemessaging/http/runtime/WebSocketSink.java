@@ -47,8 +47,6 @@ class WebSocketSink extends AbstractSink {
     private final Map<String, CompletableFuture<Void>> ackById = new ConcurrentHashMap<>();
     private final MessageIdProvider messageIdProvider;
 
-    //    private final MessageId
-
     WebSocketSink(Vertx vertx, URI uri, String serializer, SerializerFactoryBase serializerFactory,
             int maxRetries, Optional<Duration> delay, double jitter,
             Optional<TlsConfiguration> tlsConfiguration, long inflights, boolean waitForCompletion,
