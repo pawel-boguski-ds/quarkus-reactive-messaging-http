@@ -87,7 +87,6 @@ class WebSocketSink extends AbstractSink {
                     log.debug("WebSocket disconnected");
                     websocket.compareAndSet(newWs, null);
                 });
-                // TODO ensure this will not read few buffered responses as 1 string
                 newWs.textMessageHandler(responseText -> {
                     Response response = parseResponse(responseText);
                     if (response != null) {
@@ -108,12 +107,10 @@ class WebSocketSink extends AbstractSink {
         WebSocketConnectOptions options = options();
         Serializer<Object> serializer = serializerFactory.getSerializer(this.serializer, message.getPayload());
         Buffer serialized = serializer.serialize(message.getPayload());
-        String messageId = getMessageId(message);
-
         // TODO clear old entries from map? some leftovers may be cased by the other end errors or no response
         // TODO test how retry in abstract works. is handler below re-run? Test if retry works after change.
-        Uni<Void> ack = registerAck(messageId);
-        Uni<Void> send = AsyncResultUni.toUni(
+        registerAck(message);
+        return AsyncResultUni.toUni(
                 // all happening in "one step" so that the retry mechanism is applied to the connection too
                 handler -> {
                     WebSocket ws = websocket.get();
@@ -130,7 +127,24 @@ class WebSocketSink extends AbstractSink {
                         });
                     }
                 });
-        return Uni.combine().all().unis(send, ack).discardItems();
+    }
+
+    @Override
+    protected boolean hasAckSupport() {
+        // TODO getMessageId(message) != null ?
+        return messageIdProvider != null;
+    }
+
+    @Override
+    protected Uni<Message<?>> waitForAckOrNack(Message<?> message) {
+        String messageId = getMessageId(message);
+        if (messageId != null) {
+            log.tracef("Waiting for ack/nack message with id %s", messageId);
+            // TODO remove here instead of handleResponse
+            CompletableFuture<Void> ack = ackById.get(messageId);
+            return Uni.createFrom().completionStage(ack).onItem().transform(done -> message);
+        }
+        return Uni.createFrom().item(message);
     }
 
     private WebSocketConnectOptions options() {
@@ -161,13 +175,11 @@ class WebSocketSink extends AbstractSink {
         return null;
     }
 
-    private Uni<Void> registerAck(String messageId) {
+    private void registerAck(Message<?> message) {
+        String messageId = getMessageId(message);
         if (messageId != null) {
             CompletableFuture<Void> completionStage = new CompletableFuture<>();
             ackById.put(messageId, completionStage);
-            return Uni.createFrom().completionStage(completionStage);
-        } else {
-            return Uni.createFrom().voidItem();
         }
     }
 
@@ -179,7 +191,7 @@ class WebSocketSink extends AbstractSink {
                         response.messageId());
                 ack.complete(null);
             } else {
-                log.tracef("Completing ack handler for message id: %s",
+                log.tracef("Completing exceptionally ack handler for message id: %s",
                         response.messageId());
                 ack.completeExceptionally(
                         new RuntimeException("Nack received for message id: " + response.messageId()));
@@ -198,10 +210,15 @@ class WebSocketSink extends AbstractSink {
         if (parts.length != 2) {
             return null;
         }
+        //        if (!parts[1].startsWith("id:")) {
+        //            return null;
+        //        }
+        //        String messageId = parts[1].substring("id:".length());
+        String messageId = parts[1];
         if (parts[0].equalsIgnoreCase("ACK")) {
-            return new Response(true, parts[1]);
+            return new Response(true, messageId);
         } else if (parts[0].equalsIgnoreCase("NACK")) {
-            return new Response(false, parts[1]);
+            return new Response(false, messageId);
         } else {
             return null;
         }

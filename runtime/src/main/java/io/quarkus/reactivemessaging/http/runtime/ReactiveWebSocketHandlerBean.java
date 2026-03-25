@@ -59,6 +59,7 @@ public class ReactiveWebSocketHandlerBean extends ReactiveHandlerBeanBase<WebSoc
                                             RequestMetadata requestMetadata = new RequestMetadata(event);
                                             String messageId = getMessageId(streamConfig.messageIdProvider(), payload,
                                                     requestMetadata);
+                                            log.tracef("Emitting message with id %s", messageId);
                                             // TODO return result of serverWebSocket.write in WebSocketMessage ack and nack?
                                             emitter.emit(new WebSocketMessage<>(
                                                     payload, requestMetadata,
@@ -98,7 +99,7 @@ public class ReactiveWebSocketHandlerBean extends ReactiveHandlerBeanBase<WebSoc
 
     private void onAck(ServerWebSocket serverWebSocket, String messageId) {
         String response = "ACK" + (messageId != null ? "\n" + messageId : "");
-        serverWebSocket.write(Buffer.buffer(response));
+        serverWebSocket.writeTextMessage(response);
     }
 
     private void onNack(ServerWebSocket serverWebSocket, Throwable error, String messageId) {
@@ -106,7 +107,7 @@ public class ReactiveWebSocketHandlerBean extends ReactiveHandlerBeanBase<WebSoc
         String logMessage = "Failed to process incoming web socket message."
                 + (messageId != null ? "Message id: " + messageId : "");
         log(error, logMessage);
-        serverWebSocket.write(Buffer.buffer(response));
+        serverWebSocket.writeTextMessage(response);
     }
 
     private void onUnexpectedError(ServerWebSocket serverWebSocket, Throwable error, String message) {

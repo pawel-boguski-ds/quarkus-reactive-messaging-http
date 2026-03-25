@@ -37,6 +37,7 @@ abstract class AbstractSink {
 
             return send
                     .onItemOrFailure().transformToUni((result, error) -> {
+                        // TODO move m.ack() after ack
                         if (error != null) {
                             return Uni.createFrom().completionStage(
                                     m.nack(error).thenRun(() -> log.debugf(error, "Error responding to %s", url)));
@@ -45,11 +46,37 @@ abstract class AbstractSink {
                                 .completionStage(m.ack().thenRun(() -> log.tracef("Responded with success to %s", url)));
                     });
         });
-        this.subscriber = MultiUtils.via(processor,
-                m -> m.onFailure().invoke(f -> log.debugf("Unable to dispatch message to %s", url)));
+        //        this.subscriber = MultiUtils.via(processor, multi -> multi
+        //            .onFailure().invoke(f -> log.debugf("Unable to dispatch message to %s", url))
+        //            .onItem().transformToUniAndMerge(this::waitForAckOrNack)
+        //        );
+        this.subscriber = MultiUtils.via(processor, multi -> {
+            multi = multi
+                .onItem().invoke(message -> log.tracef("Message send to %s", url))
+                .onFailure().invoke(f -> log.debugf("Unable to dispatch message to %s", url));
+            if (hasAckSupport()) {
+//                return multi.onItem().transformToUniAndMerge(this::waitForAckOrNack);
+                return multi.onItem().transformToUni(this::waitForAckOrNack).merge(Integer.MAX_VALUE);
+            }
+            return multi;
+        });
+    }
+
+    protected boolean hasAckSupport() {
+        return false;
     }
 
     protected abstract Uni<Void> send(Message<?> message);
+
+    /**
+     * Can be overloaded if sink implementation use async ack/nack.
+     *
+     * @param message message to be acked or nacked
+     * @return Uni completed when ack occurred. For nack failure should be propagated.
+     */
+    protected Uni<Message<?>> waitForAckOrNack(Message<?> message) {
+        return Uni.createFrom().item(message);
+    }
 
     Flow.Subscriber<? extends Message<?>> sink() {
         return subscriber;
